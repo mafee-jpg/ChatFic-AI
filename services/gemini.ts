@@ -10,14 +10,20 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Gera conteúdo da história com lógica de resiliência (retentativas)
- * Simula uma infraestrutura robusta lidando com múltiplas requisições.
  */
 export const generateStoryContent = async (
   messages: Message[], 
   model: AIModel = 'gemini-3-flash-preview',
   retries: number = 3
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Inicializa o cliente SEMPRE dentro da chamada para garantir que pegue o process.env atualizado
+  const apiKey = process.env.API_KEY || '';
+  if (!apiKey) {
+    console.error("API Key is missing in environment variables.");
+    return "Erro: Chave de API não configurada corretamente. Verifique as configurações do seu servidor.";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   // Prepara o histórico para o Gemini
   const contents = messages.map(m => ({
@@ -41,16 +47,13 @@ export const generateStoryContent = async (
     } catch (error: any) {
       console.error(`Attempt ${attempt} failed:`, error);
       
-      // Se for erro de limite de taxa (429) ou erro de servidor (5xx), tenta novamente
       const isRetryable = error?.status === 429 || (error?.status >= 500 && error?.status < 600);
       
       if (isRetryable && attempt < retries) {
-        // Backoff exponencial: 1s, 2s, 4s...
         const delay = Math.pow(2, attempt) * 500;
         await sleep(delay);
         continue;
       }
-      
       break;
     }
   }

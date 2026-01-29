@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Story, Message, IdeaPrompt, AIModel, Language, User } from './types';
-import { ICONS, IDEA_PROMPTS, MODELS, TRANSLATIONS, SYSTEM_INSTRUCTION } from './constants';
+import { ICONS, IDEA_PROMPTS, MODELS, TRANSLATIONS } from './constants';
 import { generateStoryContent } from './services/gemini';
 import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from 'jspdf';
@@ -93,7 +93,10 @@ const App: React.FC = () => {
   const generateNewIdea = async () => {
     setIsGeneratingIdea(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY || '';
+      if (!apiKey) throw new Error("API Key missing");
+      
+      const ai = new GoogleGenAI({ apiKey });
       const prompt = language === 'pt-BR' 
         ? "Gere uma ideia criativa e única para uma fanfic. Retorne APENAS um JSON no formato: { \"title\": \"Título\", \"category\": \"Categoria\", \"prompt\": \"Descrição da ideia\" }. Seja criativo e evite clichês."
         : "Generate a creative and unique fanfiction idea. Return ONLY a JSON in the format: { \"title\": \"Title\", \"category\": \"Category\", \"prompt\": \"Prompt description\" }. Be creative and avoid clichés.";
@@ -117,10 +120,38 @@ const App: React.FC = () => {
       setCustomIdeas(prev => [newIdea, ...prev]);
     } catch (error) {
       console.error("Error generating idea:", error);
-      alert(language === 'pt-BR' ? "Erro ao gerar inspiração. Tente novamente." : "Error generating inspiration. Try again.");
+      alert(language === 'pt-BR' ? "Erro ao gerar inspiração. Verifique sua chave de API." : "Error generating inspiration. Check your API key.");
     } finally {
       setIsGeneratingIdea(false);
     }
+  };
+
+  const deleteMessage = (storyId: string | null, msgId: string) => {
+    if (!storyId) return;
+    const confirmMsg = language === 'pt-BR' ? "Apagar esta mensagem permanentemente?" : "Delete this message permanently?";
+    if (!window.confirm(confirmMsg)) return;
+    
+    setStories(prev => prev.map(s => {
+      if (s.id === storyId) {
+        const filteredMessages = s.messages.filter(m => m.id !== msgId);
+        return { ...s, messages: filteredMessages, updatedAt: Date.now() };
+      }
+      return s;
+    }));
+  };
+
+  const deleteStory = (id: string) => {
+    const confirmMsg = language === 'pt-BR' ? "Tem certeza que deseja apagar esta fanfic inteira?" : "Are you sure you want to delete this entire fanfic?";
+    if (!window.confirm(confirmMsg)) return;
+    
+    setStories(prev => prev.filter(s => s.id !== id));
+    setCommunityStories(prev => prev.filter(s => s.id !== id));
+    
+    if (currentStoryId === id) { 
+      setCurrentStoryId(null); 
+      setView('chat');
+    }
+    setShowOptionsDropdown(false);
   };
 
   const exportAsPDF = (story: Story) => {
@@ -179,19 +210,6 @@ const App: React.FC = () => {
     const historyUpTo = story.messages.slice(0, index);
     setStories(prev => prev.map(s => s.id === storyId ? { ...s, messages: historyUpTo } : s));
     await handleGenerate(storyId, historyUpTo, selectedModel);
-  };
-
-  const deleteMessage = (storyId: string | null, msgId: string) => {
-    if (!storyId) return;
-    const confirmMsg = language === 'pt-BR' ? "Apagar esta mensagem?" : "Delete this message?";
-    if (!window.confirm(confirmMsg)) return;
-    
-    setStories(prev => prev.map(s => {
-      if (s.id === storyId) {
-        return { ...s, messages: s.messages.filter(m => m.id !== msgId), updatedAt: Date.now() };
-      }
-      return s;
-    }));
   };
 
   const startEditing = (msg: Message) => {
@@ -295,19 +313,6 @@ const App: React.FC = () => {
     setStories(prev => prev.map(s => s.id === storyId ? { ...s, messages: currentMsgs, updatedAt: Date.now() } : s));
     setInputValue('');
     await handleGenerate(storyId!, currentMsgs, selectedModel);
-  };
-
-  const deleteStory = (id: string) => {
-    if (!window.confirm(t.confirmDelete)) return;
-    
-    if (currentStoryId === id) { 
-      setCurrentStoryId(null); 
-    }
-    
-    setStories(prev => prev.filter(s => s.id !== id));
-    setCommunityStories(prev => prev.filter(s => s.id !== id));
-    setShowOptionsDropdown(false);
-    setView('chat');
   };
 
   const togglePublish = () => {
